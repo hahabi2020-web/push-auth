@@ -15,7 +15,7 @@
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
-        appId: "你的_ONESIGNAL_APP_ID", // ⚠️ 請確保替換為真實 App ID
+        appId: "8b1953c2-1870-45ca-9e23-26110147c8c3", // ⚠️ 請確保替換為真實 App ID
       });
     });
   </script>
@@ -34,7 +34,7 @@
   <h2>🔔 訂閱商品更新通知</h2>
   
   <div style="margin-top: 15px; text-align: left;">
-    <label style="font-size: 14px; color: #555;">確認您的買家帳號/手機：</label>
+    <label style="font-size: 14px; color: #555;">確認您的買家帳號：</label>
     <input type="text" id="userInput" placeholder="請輸入您的買家帳號">
   </div>
 
@@ -95,7 +95,7 @@
 
   function sendToGas(userId, onesignalId) {
     // 固定寫死你的 GAS Webhook 正確 URL (請替換為你的 exec 網址)
-    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxzlZpfR88qrv11nCzu_SY_cb079YtXvGGOO592Wn2vyuLdEg-nMfmMS_4qZgXkrb5gSw/exec";
+    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxbd9NJQCJstxZf3PzYT4fg8NEsPkPeuEZAExOEI0J7nSzPG4CmkFBOc64Y5Vs7M1BaFQ/exec";
     
     fetch(gasTargetUrl, {
       method: 'POST',

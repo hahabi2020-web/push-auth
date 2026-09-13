@@ -5,19 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>哈比星球 - 訂閱推播</title>
   
-  <!-- PWA 標籤設定 -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="哈比推播">
 
-  <!-- OneSignal SDK -->
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
-        appId: "你的_ONESIGNAL_APP_ID", // ⚠️ 請替換為你的 OneSignal App ID
+        appId: "你的_ONESIGNAL_APP_ID", // ⚠️ 請確保替換為真實 App ID
       });
     });
   </script>
@@ -25,7 +23,8 @@
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 40px 20px; background: #f9f9f9; }
     .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
-    button { background: #0d6efd; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; margin-top: 20px; cursor: pointer; }
+    button { background: #0d6efd; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; margin-top: 15px; cursor: pointer; }
+    input { width: 90%; padding: 10px; margin-top: 10px; border: 1px solid #ccc; border-radius: 6px; text-align: center; font-size: 16px; }
     .step-box { background: #eef5ff; border: 1px dashed #0d6efd; padding: 15px; border-radius: 8px; text-align: left; margin-top: 15px; font-size: 14px; line-height: 1.6; }
   </style>
 </head>
@@ -34,6 +33,11 @@
 <div class="card">
   <h2>🔔 訂閱商品更新通知</h2>
   
+  <div style="margin-top: 15px; text-align: left;">
+    <label style="font-size: 14px; color: #555;">確認您的買家帳號/手機：</label>
+    <input type="text" id="userInput" placeholder="請輸入您的買家帳號">
+  </div>
+
   <div id="pwaNotice" style="display: none;" class="step-box">
     <strong>⚠️ iOS 啟用步驟：</strong><br>
     1. 點擊 Safari 底部「分享」按鈕 📤<br>
@@ -42,22 +46,19 @@
   </div>
 
   <button id="authBtn" onclick="handleAuth()">立即開啟通知</button>
-  <p id="statusMsg" style="margin-top: 15px; color: #666;"></p>
 </div>
 
 <script>
-  // 1. 處理 URL 參數與本地儲存（防止加到主畫面後帳號遺失）
   var urlParams = new URLSearchParams(window.location.search);
-  var user = urlParams.get('user');
-  var gas = urlParams.get('gas');
+  var userParam = urlParams.get('user');
+  var gasParam = urlParams.get('gas');
 
-  if (user) localStorage.setItem('push_buyer_user', user);
-  if (gas) localStorage.setItem('push_buyer_gas', gas);
+  if (userParam && userParam !== '訪客') localStorage.setItem('push_buyer_user', userParam);
+  if (gasParam) localStorage.setItem('push_buyer_gas', gasParam);
 
-  var currentUser = localStorage.getItem('push_buyer_user') || '訪客';
-  var currentGas = localStorage.getItem('push_buyer_gas') || '';
+  var savedUser = localStorage.getItem('push_buyer_user') || '';
+  document.getElementById('userInput').value = savedUser;
 
-  // 2. 判斷環境
   var ua = navigator.userAgent || "";
   var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
   var isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
@@ -67,8 +68,14 @@
     document.getElementById('authBtn').style.display = 'none';
   }
 
-  // 3. 執行授權邏輯
   function handleAuth() {
+    var finalUser = document.getElementById('userInput').value.trim();
+    if (!finalUser) {
+      alert("請填寫買家帳號！");
+      return;
+    }
+    localStorage.setItem('push_buyer_user', finalUser);
+
     if (!("Notification" in window)) {
       alert("您的瀏覽器不支援推播通知");
       return;
@@ -78,7 +85,7 @@
       if (permission === 'granted') {
         OneSignalDeferred.push(async function(OneSignal) {
           var onesignalId = await OneSignal.User.PushSubscription.id;
-          sendToGas(currentUser, onesignalId);
+          sendToGas(finalUser, onesignalId);
         });
       } else {
         alert("權限已被拒絕，請至手機設定中開啟通知權限。");
@@ -86,14 +93,11 @@
     });
   }
 
-  // 4. 回傳資料給 GAS
   function sendToGas(userId, onesignalId) {
-    if (!currentGas) {
-      alert("授權成功！");
-      return;
-    }
+    // 固定寫死你的 GAS Webhook 正確 URL (請替換為你的 exec 網址)
+    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/你的_DEPLOYMENT_ID/exec";
     
-    fetch(currentGas, {
+    fetch(gasTargetUrl, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -104,7 +108,6 @@
       })
     }).then(function() {
       alert("🎉 通知開啟成功！已綁定帳號：" + userId);
-      window.close();
     });
   }
 </script>

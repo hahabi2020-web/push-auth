@@ -7,11 +7,20 @@
   
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
+    // ⚠️ 請把下方網址替換成你的 Google Apps Script Web App 正式網址
+    const GAS_APP_URL = "https://script.google.com/macros/s/AKfycbzb4JW1SVHEbmfXl13BrWYpZ4IGYN6R5R_1fNEvCg5w6JQzQKzsU5kRNKL-cf2XyNtpoQ/exec";
+
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
         appId: "8b1953c2-1870-45ca-9e23-26110147c8c3",
         serviceWorkerPath: "OneSignalSDKWorker.js"
+      });
+
+      // 設定點擊推播通知時，自動開啟 GAS 加購單頁面
+      OneSignal.Notifications.addEventListener('click', function(event) {
+        event.preventDefault();
+        window.open(GAS_APP_URL, '_blank');
       });
     });
   </script>
@@ -73,7 +82,6 @@
           if (Notification.permission === "granted") {
             statusDiv.innerText = "⏳ 正在完成裝置註冊...";
 
-            // 1. 嘗試直接取得 ID
             let onesignalId = OneSignal.User.PushSubscription.id;
             
             if (onesignalId) {
@@ -81,14 +89,12 @@
               return;
             }
 
-            // 2. 監聽訂閱變更事件
             OneSignal.User.PushSubscription.addEventListener("change", function(event) {
               if (event.current && event.current.id) {
                 sendToOpener(event.current.id);
               }
             });
 
-            // 3. 輪詢防呆 (每 500ms 檢查一次，最長 4 秒)
             let attempts = 0;
             const timer = setInterval(() => {
               attempts++;

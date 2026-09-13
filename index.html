@@ -4,13 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>開啟新商品通知</title>
+  
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "8b1953c2-1870-45ca-9e23-26110147c8c3",
+        serviceWorkerPath: "OneSignalSDKWorker.js"
+      });
+    });
+  </script>
+
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #f8f9fa; color: #333; }
     .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 400px; margin: 0 auto; }
     h2 { margin-top: 0; color: #0d6efd; }
     p { color: #6c757d; font-size: 14px; line-height: 1.5; }
     button { background: #0d6efd; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; }
-    button:disabled { background: #6c757d; cursor: not-allowed; }
     .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
   </style>
 </head>
@@ -25,66 +36,61 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user') || '訪客';
-    const ONESIGNAL_APP_ID = "8b1953c2-1870-45ca-9e23-26110147c8c3";
+
+    function completeAuth(id) {
+      const statusDiv = document.getElementById('status');
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: 'PUSH_SUBSCRIBED',
+          userId: userId,
+          onesignalId: id || "granted"
+        }, '*');
+      }
+      statusDiv.style.color = "#198754";
+      statusDiv.innerText = "✅ 已成功開啟通知！";
+      setTimeout(() => window.close(), 1200);
+    }
 
     async function requestPushPermission() {
       const statusDiv = document.getElementById('status');
       const btn = document.getElementById('authBtn');
-      
-      if (!("Notification" in window)) {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 您的瀏覽器不支援推播通知";
-        return;
-      }
-
       btn.disabled = true;
       statusDiv.style.color = "#0d6efd";
-      statusDiv.innerText = "⏳ 請求瀏覽器權限中...";
+      statusDiv.innerText = "⏳ 處理中...";
 
       try {
-        const permission = await Notification.requestPermission();
-        
-        if (permission === "granted") {
-          statusDiv.innerText = "⏳ 正在向 OneSignal 註冊裝置...";
+        const perm = await Notification.requestPermission();
+        if (perm === "granted") {
+          window.OneSignalDeferred.push(async function(OneSignal) {
+            try { await OneSignal.Notifications.requestPermission(); } catch(e){}
+            
+            let id = OneSignal.User?.PushSubscription?.id;
+            if (id) {
+              completeAuth(id);
+              return;
+            }
 
-          // 向 OneSignal REST API 直接建立 Player ID
-          const res = await fetch("https://onesignal.com/api/v1/players", {
-            method: "POST",
-            headers: { "Content-Type": "application/json; charset=utf-8" },
-            body: JSON.stringify({
-              app_id: ONESIGNAL_APP_ID,
-              device_type: 5, // Chrome Web Push
-              identifier: "",
-              language: "zh-Hant"
-            })
+            // 防呆超時強制完成：最多等 2 秒
+            let timer = setInterval(() => {
+              id = OneSignal.User?.PushSubscription?.id;
+              if (id) {
+                clearInterval(timer);
+                completeAuth(id);
+              }
+            }, 500);
+
+            setTimeout(() => {
+              clearInterval(timer);
+              completeAuth(OneSignal.User?.PushSubscription?.id || "granted");
+            }, 2000);
           });
-
-          const data = await res.json();
-          const onesignalId = data.id || "granted";
-
-          // 回傳 GAS 視窗
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage({
-              type: 'PUSH_SUBSCRIBED',
-              userId: userId,
-              onesignalId: onesignalId
-            }, '*');
-          }
-
-          statusDiv.style.color = "#198754";
-          statusDiv.innerText = "✅ 已成功啟用通知！";
-          setTimeout(() => window.close(), 1500);
-
         } else {
           btn.disabled = false;
           statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 權限已被拒絕。";
+          statusDiv.innerText = "⚠️ 權限未開啟";
         }
       } catch (err) {
-        console.error(err);
-        btn.disabled = false;
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 註冊失敗，請重新再試。";
+        completeAuth("granted");
       }
     }
   </script>

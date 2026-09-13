@@ -4,33 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>開啟新商品通知</title>
-  
-  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-  <script>
-    // ⚠️ 請填入你的 GAS Web App 網址
-    const GAS_APP_URL = "YOUR_GAS_WEB_APP_URL";
-
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async function(OneSignal) {
-      await OneSignal.init({
-        appId: "8b1953c2-1870-45ca-9e23-26110147c8c3",
-        serviceWorkerPath: "OneSignalSDKWorker.js"
-      });
-
-      OneSignal.Notifications.addEventListener('click', function(event) {
-        event.preventDefault();
-        window.open(GAS_APP_URL, '_blank');
-      });
-    });
-  </script>
-
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #f8f9fa; color: #333; }
     .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 400px; margin: 0 auto; }
     h2 { margin-top: 0; color: #0d6efd; }
     p { color: #6c757d; font-size: 14px; line-height: 1.5; }
-    button { background: #0d6efd; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; transition: 0.2s; }
-    button:hover { background: #0b5ed7; }
+    button { background: #0d6efd; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; }
     button:disabled { background: #6c757d; cursor: not-allowed; }
     .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
   </style>
@@ -47,20 +26,6 @@
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user') || '訪客';
 
-    function sendToOpener(onesignalId) {
-      const statusDiv = document.getElementById('status');
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({
-          type: 'PUSH_SUBSCRIBED',
-          userId: userId,
-          onesignalId: onesignalId
-        }, '*');
-      }
-      statusDiv.style.color = "#198754";
-      statusDiv.innerText = "✅ 已成功開啟通知！可以關閉此視窗了。";
-      setTimeout(() => window.close(), 1500);
-    }
-
     async function requestPushPermission() {
       const statusDiv = document.getElementById('status');
       const btn = document.getElementById('authBtn');
@@ -73,53 +38,41 @@
 
       btn.disabled = true;
       statusDiv.style.color = "#0d6efd";
-      statusDiv.innerText = "⏳ 請求瀏覽器權限中...";
+      statusDiv.innerText = "⏳ 請求權限中...";
 
       try {
-        // 使用原生 API 請求權限，避免被 SDK 卡住
         const permission = await Notification.requestPermission();
         
         if (permission === "granted") {
-          statusDiv.innerText = "⏳ 正在獲取 OneSignal ID...";
+          statusDiv.innerText = "⏳ 正在啟用通知連線...";
 
-          window.OneSignalDeferred.push(async function(OneSignal) {
-            // 選擇性啟用通知
-            try { await OneSignal.Notifications.requestPermission(); } catch(e){}
+          // 使用原生 Service Worker 註冊
+          const registration = await navigator.serviceWorker.register('OneSignalSDKWorker.js');
+          await navigator.serviceWorker.ready;
 
-            // 檢查 ID
-            let onesignalId = OneSignal.User.PushSubscription.id;
-            
-            if (onesignalId) {
-              sendToOpener(onesignalId);
-              return;
-            }
+          statusDiv.style.color = "#198754";
+          statusDiv.innerText = "✅ 已成功授權推播權限！";
 
-            // 防呆計時器：每 500ms 讀取一次 ID，最多等 3 秒
-            let attempts = 0;
-            const timer = setInterval(() => {
-              attempts++;
-              onesignalId = OneSignal.User.PushSubscription.id;
-              if (onesignalId || attempts >= 6) {
-                clearInterval(timer);
-                sendToOpener(onesignalId || "granted");
-              }
-            }, 500);
-          });
+          // 回傳已授權訊息給 Apps Script
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({
+              type: 'PUSH_SUBSCRIBED',
+              userId: userId,
+              onesignalId: "已授權 (原生)"
+            }, '*');
+          }
 
-        } else if (permission === "denied") {
-          btn.disabled = false;
-          statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 權限已被拒絕，請點選網址列鎖頭重設通知。";
+          setTimeout(() => window.close(), 1500);
         } else {
           btn.disabled = false;
-          statusDiv.style.color = "orange";
-          statusDiv.innerText = "⚠️ 未完成授權，請再試一次。";
+          statusDiv.style.color = "red";
+          statusDiv.innerText = "⚠️ 權限已被拒絕，請點擊網址列鎖頭允許通知。";
         }
       } catch (err) {
         console.error(err);
         btn.disabled = false;
         statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 發生錯誤，請重試。";
+        statusDiv.innerText = "⚠️ 發生錯誤：" + err.message;
       }
     }
   </script>

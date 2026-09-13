@@ -95,7 +95,7 @@
 
   function sendToGas(userId, onesignalId) {
     // 固定寫死你的 GAS Webhook 正確 URL (請替換為你的 exec 網址)
-    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/你的_DEPLOYMENT_ID/exec";
+    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxzlZpfR88qrv11nCzu_SY_cb079YtXvGGOO592Wn2vyuLdEg-nMfmMS_4qZgXkrb5gSw/exec";
     
     fetch(gasTargetUrl, {
       method: 'POST',

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>開啟新商品通知</title>
   
-  <!-- 載入 OneSignal 官方 SDK -->
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -39,6 +38,20 @@
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user') || '訪客';
 
+    function sendToOpener(onesignalId) {
+      const statusDiv = document.getElementById('status');
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: 'PUSH_SUBSCRIBED',
+          userId: userId,
+          onesignalId: onesignalId
+        }, '*');
+      }
+      statusDiv.style.color = "#198754";
+      statusDiv.innerText = "✅ 已成功開啟通知！可以關閉此視窗了。";
+      setTimeout(() => window.close(), 1500);
+    }
+
     async function requestPushPermission() {
       const statusDiv = document.getElementById('status');
       const btn = document.getElementById('authBtn');
@@ -51,50 +64,53 @@
 
       btn.disabled = true;
       statusDiv.style.color = "#0d6efd";
-      statusDiv.innerText = "⏳ 正在請求權限...";
+      statusDiv.innerText = "⏳ 正在處理授權資訊...";
 
-      try {
-        const permission = await Notification.requestPermission();
-        
-        if (permission === "granted") {
-          statusDiv.innerText = "⏳ 正在註冊通知裝置...";
+      window.OneSignalDeferred.push(async function(OneSignal) {
+        try {
+          await OneSignal.Notifications.requestPermission();
           
-          window.OneSignalDeferred.push(async function(OneSignal) {
-            await OneSignal.Notifications.requestPermission();
-            
-            // 取得 OneSignal Push Subscription ID
+          if (Notification.permission === "granted") {
+            statusDiv.innerText = "⏳ 正在完成裝置註冊...";
+
+            // 1. 嘗試直接取得 ID
             let onesignalId = OneSignal.User.PushSubscription.id;
             
-            // 若 SDK 尚未同步完成，等待 1 秒再次讀取
-            if (!onesignalId) {
-              await new Promise(r => setTimeout(r, 1000));
-              onesignalId = OneSignal.User.PushSubscription.id || "granted";
+            if (onesignalId) {
+              sendToOpener(onesignalId);
+              return;
             }
 
-            // 回傳給 Google Apps Script 母頁面
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({
-                type: 'PUSH_SUBSCRIBED',
-                userId: userId,
-                onesignalId: onesignalId
-              }, '*');
-            }
+            // 2. 監聽訂閱變更事件
+            OneSignal.User.PushSubscription.addEventListener("change", function(event) {
+              if (event.current && event.current.id) {
+                sendToOpener(event.current.id);
+              }
+            });
 
-            statusDiv.style.color = "#198754";
-            statusDiv.innerText = "✅ 已成功開啟通知！可以關閉此視窗了。";
-            setTimeout(() => window.close(), 2000);
-          });
-        } else {
+            // 3. 輪詢防呆 (每 500ms 檢查一次，最長 4 秒)
+            let attempts = 0;
+            const timer = setInterval(() => {
+              attempts++;
+              onesignalId = OneSignal.User.PushSubscription.id;
+              if (onesignalId || attempts >= 8) {
+                clearInterval(timer);
+                sendToOpener(onesignalId || "granted");
+              }
+            }, 500);
+
+          } else {
+            btn.disabled = false;
+            statusDiv.style.color = "red";
+            statusDiv.innerText = "⚠️ 權限已被拒絕。";
+          }
+        } catch (err) {
+          console.error(err);
           btn.disabled = false;
           statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 權限已被拒絕，請點擊網址列鎖頭允許通知。";
+          statusDiv.innerText = "⚠️ 授權發生錯誤，請重試。";
         }
-      } catch (err) {
-        console.error(err);
-        btn.disabled = false;
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 發生錯誤，請重試。";
-      }
+      });
     }
   </script>
 </body>

@@ -94,7 +94,7 @@
   }
 
   function sendToGas(userId, onesignalId) {
-    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxbd9NJQCJstxZf3PzYT4fg8NEsPkPeuEZAExOEI0J7nSzPG4CmkFBOc64Y5Vs7M1BaFQ/exec";
+    var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxdettFS9c3fRYFwZt3ij6CxTfMz_AZA5rBtpxp6vwexIq0YhUz432ducC7Zhbv0wCW-g/exec";
     
     // 改用 text/plain 避免跨域 CORS preflight 預檢問題，確保 POST 能順利寫入 GAS
     var payload = JSON.stringify({

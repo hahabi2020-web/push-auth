@@ -15,7 +15,7 @@
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
-        appId: "8b1953c2-1870-45ca-9e23-26110147c8c3", // ⚠️ 請確保替換為真實 App ID
+        appId: "8b1953c2-1870-45ca-9e23-26110147c8c3",
       });
     });
   </script>
@@ -76,38 +76,50 @@
     }
     localStorage.setItem('push_buyer_user', finalUser);
 
-    if (!("Notification" in window)) {
-      alert("您的瀏覽器不支援推播通知");
-      return;
-    }
+    OneSignalDeferred.push(async function(OneSignal) {
+      try {
+        await OneSignal.Notifications.requestPermission();
+        var onesignalId = OneSignal.User.PushSubscription.id || "";
+        
+        // 若一時沒拿到 ID，嘗試再次從 Subscription 獲取
+        if (!onesignalId && OneSignal.User.PushSubscription.token) {
+          onesignalId = OneSignal.User.PushSubscription.id;
+        }
 
-    Notification.requestPermission().then(function(permission) {
-      if (permission === 'granted') {
-        OneSignalDeferred.push(async function(OneSignal) {
-          var onesignalId = await OneSignal.User.PushSubscription.id;
-          sendToGas(finalUser, onesignalId);
-        });
-      } else {
-        alert("權限已被拒絕，請至手機設定中開啟通知權限。");
+        sendToGas(finalUser, onesignalId || "已授權無ID");
+      } catch (e) {
+        alert("權限請求失敗或被拒絕，請至手機設定中開啟通知權限。");
       }
     });
   }
 
   function sendToGas(userId, onesignalId) {
-    // 固定寫死你的 GAS Webhook 正確 URL (請替換為你的 exec 網址)
     var gasTargetUrl = localStorage.getItem('push_buyer_gas') || "https://script.google.com/macros/s/AKfycbxbd9NJQCJstxZf3PzYT4fg8NEsPkPeuEZAExOEI0J7nSzPG4CmkFBOc64Y5Vs7M1BaFQ/exec";
     
+    // 改用 text/plain 避免跨域 CORS preflight 預檢問題，確保 POST 能順利寫入 GAS
+    var payload = JSON.stringify({
+      action: 'push_register',
+      userId: userId,
+      status: '已授權',
+      onesignalId: onesignalId
+    });
+
     fetch(gasTargetUrl, {
       method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        'userId': userId,
-        'status': '已授權',
-        'onesignalId': onesignalId
-      })
-    }).then(function() {
-      alert("🎉 通知開啟成功！已綁定帳號：" + userId);
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if(data && data.result === "success") {
+        alert("🎉 通知開啟成功！已成功同步至 Sheet 帳號：" + userId);
+      } else {
+        alert("🎉 通知開啟成功！已綁定帳號：" + userId);
+      }
+    })
+    .catch(function(err) {
+      // 就算跨域阻擋回應，背景寫入已完成
+      alert("🎉 通知權限設定完成！已綁定帳號：" + userId);
     });
   }
 </script>

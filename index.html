@@ -1,104 +1,113 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>開啟新商品通知</title>
+  <title>哈比星球 - 訂閱推播</title>
+  
+  <!-- PWA 標籤設定 -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="哈比推播">
+
+  <!-- OneSignal SDK -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "你的_ONESIGNAL_APP_ID", // ⚠️ 請替換為你的 OneSignal App ID
+      });
+    });
+  </script>
+
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 40px 20px; background: #f8f9fa; color: #333; }
-    .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 400px; margin: 0 auto; }
-    h2 { margin-top: 0; color: #0d6efd; }
-    p { color: #6c757d; font-size: 14px; line-height: 1.5; }
-    button { background: #0d6efd; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; transition: 0.2s; }
-    button:hover { background: #0b5ed7; }
-    .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 40px 20px; background: #f9f9f9; }
+    .card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
+    button { background: #0d6efd; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; margin-top: 20px; cursor: pointer; }
+    .step-box { background: #eef5ff; border: 1px dashed #0d6efd; padding: 15px; border-radius: 8px; text-align: left; margin-top: 15px; font-size: 14px; line-height: 1.6; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>🔔 訂閱商品更新通知</h2>
-    <p>點擊下方按鈕並在瀏覽器跳出提示時選擇「允許」，即可第一時間接收新品通知！</p>
-    <button onclick="requestPushPermission()">立即開啟通知</button>
-    <div id="status" class="status"></div>
+
+<div class="card">
+  <h2>🔔 訂閱商品更新通知</h2>
+  
+  <div id="pwaNotice" style="display: none;" class="step-box">
+    <strong>⚠️ iOS 啟用步驟：</strong><br>
+    1. 點擊 Safari 底部「分享」按鈕 📤<br>
+    2. 點選「加到主畫面」➕<br>
+    3. 從桌面開啟「哈比推播」App 完成授權
   </div>
 
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('user') || '訪客';
-    const gasUrl = urlParams.get('gas') || '';
+  <button id="authBtn" onclick="handleAuth()">立即開啟通知</button>
+  <p id="statusMsg" style="margin-top: 15px; color: #666;"></p>
+</div>
 
-    async function requestPushPermission() {
-      const statusDiv = document.getElementById('status');
-      
-      if (!("Notification" in window)) {
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 您的瀏覽器不支援推播通知";
-        return;
-      }
+<script>
+  // 1. 處理 URL 參數與本地儲存（防止加到主畫面後帳號遺失）
+  var urlParams = new URLSearchParams(window.location.search);
+  var user = urlParams.get('user');
+  var gas = urlParams.get('gas');
 
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-          statusDiv.style.color = "#198754";
-          statusDiv.innerText = "⏳ 正在完成註冊...";
+  if (user) localStorage.setItem('push_buyer_user', user);
+  if (gas) localStorage.setItem('push_buyer_gas', gas);
 
-          // 1. 向 OneSignal 註冊裝置
-          const res = await fetch("https://onesignal.com/api/v1/players", {
-            method: "POST",
-            headers: { "Content-Type": "application/json; charset=utf-8" },
-            body: JSON.stringify({
-              app_id: "8b1953c2-1870-45ca-9e23-26110147c8c3",
-              device_type: 5,
-              identifier: "",
-              language: "zh-Hant"
-            })
-          });
+  var currentUser = localStorage.getItem('push_buyer_user') || '訪客';
+  var currentGas = localStorage.getItem('push_buyer_gas') || '';
 
-          const data = await res.json();
-          const onesignalId = data.id || "granted";
+  // 2. 判斷環境
+  var ua = navigator.userAgent || "";
+  var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  var isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
-          // 2. 管道 A：電腦版視窗傳回
-          if (window.opener && !window.opener.closed) {
-            try {
-              window.opener.postMessage({
-                type: 'PUSH_SUBSCRIBED',
-                userId: userId,
-                onesignalId: onesignalId
-              }, '*');
-            } catch(e) {}
-          }
+  if (isIOS && !isStandalone) {
+    document.getElementById('pwaNotice').style.display = 'block';
+    document.getElementById('authBtn').style.display = 'none';
+  }
 
-          // 3. 管道 B：手機版非同步傳回 GAS (使用 text/plain 避開 CORS 阻擋)
-          if (gasUrl) {
-            const payload = JSON.stringify({
-              action: "updateBuyerPushStatus",
-              userId: userId,
-              status: "已授權",
-              onesignalId: onesignalId
-            });
-            
-            navigator.sendBeacon ? navigator.sendBeacon(gasUrl, payload) : fetch(gasUrl, {
-              method: "POST",
-              mode: "no-cors",
-              headers: { "Content-Type": "text/plain" },
-              body: payload
-            });
-          }
-
-          statusDiv.innerText = "✅ 已成功開啟通知！您可以關閉此分頁。";
-          setTimeout(() => {
-            if (window.opener) window.close();
-          }, 2000);
-        } else {
-          statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 權限已被拒絕，請至瀏覽器設定開啟通知。";
-        }
-      } catch (err) {
-        console.error(err);
-        statusDiv.style.color = "red";
-        statusDiv.innerText = "⚠️ 發生錯誤，請重試。";
-      }
+  // 3. 執行授權邏輯
+  function handleAuth() {
+    if (!("Notification" in window)) {
+      alert("您的瀏覽器不支援推播通知");
+      return;
     }
-  </script>
+
+    Notification.requestPermission().then(function(permission) {
+      if (permission === 'granted') {
+        OneSignalDeferred.push(async function(OneSignal) {
+          var onesignalId = await OneSignal.User.PushSubscription.id;
+          sendToGas(currentUser, onesignalId);
+        });
+      } else {
+        alert("權限已被拒絕，請至手機設定中開啟通知權限。");
+      }
+    });
+  }
+
+  // 4. 回傳資料給 GAS
+  function sendToGas(userId, onesignalId) {
+    if (!currentGas) {
+      alert("授權成功！");
+      return;
+    }
+    
+    fetch(currentGas, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        'userId': userId,
+        'status': '已授權',
+        'onesignalId': onesignalId
+      })
+    }).then(function() {
+      alert("🎉 通知開啟成功！已綁定帳號：" + userId);
+      window.close();
+    });
+  }
+</script>
+
 </body>
 </html>

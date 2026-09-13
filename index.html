@@ -23,9 +23,9 @@
   </div>
 
   <script>
-    // 取得網址參數中的買家 ID
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user') || '訪客';
+    const gasUrl = urlParams.get('gas') || '';
 
     async function requestPushPermission() {
       const statusDiv = document.getElementById('status');
@@ -40,15 +40,15 @@
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
           statusDiv.style.color = "#198754";
-          statusDiv.innerText = "⏳ 正在向 OneSignal 註冊...";
+          statusDiv.innerText = "⏳ 正在完成註冊...";
 
-          // 呼叫 OneSignal REST API 註冊裝置
+          // 1. 向 OneSignal 註冊裝置
           const res = await fetch("https://onesignal.com/api/v1/players", {
             method: "POST",
             headers: { "Content-Type": "application/json; charset=utf-8" },
             body: JSON.stringify({
               app_id: "8b1953c2-1870-45ca-9e23-26110147c8c3",
-              device_type: 5, // Chrome/Web Push
+              device_type: 5,
               identifier: "",
               language: "zh-Hant"
             })
@@ -57,20 +57,41 @@
           const data = await res.json();
           const onesignalId = data.id || "granted";
 
-          // 通知原 GAS 視窗回覆狀態（若母視窗還開著）
+          // 2. 管道 A：電腦版視窗傳回
           if (window.opener && !window.opener.closed) {
-            window.opener.postMessage({
-              type: 'PUSH_SUBSCRIBED',
-              userId: userId,
-              onesignalId: onesignalId
-            }, '*');
+            try {
+              window.opener.postMessage({
+                type: 'PUSH_SUBSCRIBED',
+                userId: userId,
+                onesignalId: onesignalId
+              }, '*');
+            } catch(e) {}
           }
 
-          statusDiv.innerText = "✅ 已成功開啟通知！可以關閉此視窗了。";
-          setTimeout(() => window.close(), 2500);
+          // 3. 管道 B：手機版非同步傳回 GAS (使用 text/plain 避開 CORS 阻擋)
+          if (gasUrl) {
+            const payload = JSON.stringify({
+              action: "updateBuyerPushStatus",
+              userId: userId,
+              status: "已授權",
+              onesignalId: onesignalId
+            });
+            
+            navigator.sendBeacon ? navigator.sendBeacon(gasUrl, payload) : fetch(gasUrl, {
+              method: "POST",
+              mode: "no-cors",
+              headers: { "Content-Type": "text/plain" },
+              body: payload
+            });
+          }
+
+          statusDiv.innerText = "✅ 已成功開啟通知！您可以關閉此分頁。";
+          setTimeout(() => {
+            if (window.opener) window.close();
+          }, 2000);
         } else {
           statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 權限已被拒絕，請點擊網址列鎖頭允許通知。";
+          statusDiv.innerText = "⚠️ 權限已被拒絕，請至瀏覽器設定開啟通知。";
         }
       } catch (err) {
         console.error(err);

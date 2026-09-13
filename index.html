@@ -7,8 +7,8 @@
   
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
-    // ⚠️ 請把下方網址替換成你的 Google Apps Script Web App 正式網址
-    const GAS_APP_URL = "https://script.google.com/macros/s/AKfycbzb4JW1SVHEbmfXl13BrWYpZ4IGYN6R5R_1fNEvCg5w6JQzQKzsU5kRNKL-cf2XyNtpoQ/exec";
+    // ⚠️ 請填入你的 GAS Web App 網址
+    const GAS_APP_URL = "YOUR_GAS_WEB_APP_URL";
 
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
@@ -17,7 +17,6 @@
         serviceWorkerPath: "OneSignalSDKWorker.js"
       });
 
-      // 設定點擊推播通知時，自動開啟 GAS 加購單頁面
       OneSignal.Notifications.addEventListener('click', function(event) {
         event.preventDefault();
         window.open(GAS_APP_URL, '_blank');
@@ -32,6 +31,7 @@
     p { color: #6c757d; font-size: 14px; line-height: 1.5; }
     button { background: #0d6efd; color: white; border: none; padding: 14px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; transition: 0.2s; }
     button:hover { background: #0b5ed7; }
+    button:disabled { background: #6c757d; cursor: not-allowed; }
     .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
   </style>
 </head>
@@ -73,15 +73,20 @@
 
       btn.disabled = true;
       statusDiv.style.color = "#0d6efd";
-      statusDiv.innerText = "⏳ 正在處理授權資訊...";
+      statusDiv.innerText = "⏳ 請求瀏覽器權限中...";
 
-      window.OneSignalDeferred.push(async function(OneSignal) {
-        try {
-          await OneSignal.Notifications.requestPermission();
-          
-          if (Notification.permission === "granted") {
-            statusDiv.innerText = "⏳ 正在完成裝置註冊...";
+      try {
+        // 使用原生 API 請求權限，避免被 SDK 卡住
+        const permission = await Notification.requestPermission();
+        
+        if (permission === "granted") {
+          statusDiv.innerText = "⏳ 正在獲取 OneSignal ID...";
 
+          window.OneSignalDeferred.push(async function(OneSignal) {
+            // 選擇性啟用通知
+            try { await OneSignal.Notifications.requestPermission(); } catch(e){}
+
+            // 檢查 ID
             let onesignalId = OneSignal.User.PushSubscription.id;
             
             if (onesignalId) {
@@ -89,34 +94,33 @@
               return;
             }
 
-            OneSignal.User.PushSubscription.addEventListener("change", function(event) {
-              if (event.current && event.current.id) {
-                sendToOpener(event.current.id);
-              }
-            });
-
+            // 防呆計時器：每 500ms 讀取一次 ID，最多等 3 秒
             let attempts = 0;
             const timer = setInterval(() => {
               attempts++;
               onesignalId = OneSignal.User.PushSubscription.id;
-              if (onesignalId || attempts >= 8) {
+              if (onesignalId || attempts >= 6) {
                 clearInterval(timer);
                 sendToOpener(onesignalId || "granted");
               }
             }, 500);
+          });
 
-          } else {
-            btn.disabled = false;
-            statusDiv.style.color = "red";
-            statusDiv.innerText = "⚠️ 權限已被拒絕。";
-          }
-        } catch (err) {
-          console.error(err);
+        } else if (permission === "denied") {
           btn.disabled = false;
           statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 授權發生錯誤，請重試。";
+          statusDiv.innerText = "⚠️ 權限已被拒絕，請點選網址列鎖頭重設通知。";
+        } else {
+          btn.disabled = false;
+          statusDiv.style.color = "orange";
+          statusDiv.innerText = "⚠️ 未完成授權，請再試一次。";
         }
-      });
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "⚠️ 發生錯誤，請重試。";
+      }
     }
   </script>
 </body>

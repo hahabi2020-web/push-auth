@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>開啟新商品通知</title>
   
-  <!-- 載入 OneSignal Web SDK -->
+  <!-- 載入 OneSignal 官方 SDK -->
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       await OneSignal.init({
         appId: "8b1953c2-1870-45ca-9e23-26110147c8c3",
+        serviceWorkerPath: "OneSignalSDKWorker.js"
       });
     });
   </script>
@@ -30,7 +31,7 @@
   <div class="card">
     <h2>🔔 訂閱商品更新通知</h2>
     <p>點擊下方按鈕並在瀏覽器跳出提示時選擇「允許」，即可第一時間接收新品通知！</p>
-    <button onclick="requestPushPermission()">立即開啟通知</button>
+    <button id="authBtn" onclick="requestPushPermission()">立即開啟通知</button>
     <div id="status" class="status"></div>
   </div>
 
@@ -38,8 +39,9 @@
     const urlParams = new URLSearchParams(window.location.search);
     const userId = urlParams.get('user') || '訪客';
 
-    function requestPushPermission() {
+    async function requestPushPermission() {
       const statusDiv = document.getElementById('status');
+      const btn = document.getElementById('authBtn');
       
       if (!("Notification" in window)) {
         statusDiv.style.color = "red";
@@ -47,19 +49,29 @@
         return;
       }
 
-      window.OneSignalDeferred.push(async function(OneSignal) {
-        try {
-          // 請求瀏覽器通知權限
-          await OneSignal.Notifications.requestPermission();
+      btn.disabled = true;
+      statusDiv.style.color = "#0d6efd";
+      statusDiv.innerText = "⏳ 正在請求權限...";
+
+      try {
+        const permission = await Notification.requestPermission();
+        
+        if (permission === "granted") {
+          statusDiv.innerText = "⏳ 正在註冊通知裝置...";
           
-          if (Notification.permission === "granted") {
-            statusDiv.style.color = "#198754";
-            statusDiv.innerText = "⏳ 正在處理授權資訊...";
+          window.OneSignalDeferred.push(async function(OneSignal) {
+            await OneSignal.Notifications.requestPermission();
+            
+            // 取得 OneSignal Push Subscription ID
+            let onesignalId = OneSignal.User.PushSubscription.id;
+            
+            // 若 SDK 尚未同步完成，等待 1 秒再次讀取
+            if (!onesignalId) {
+              await new Promise(r => setTimeout(r, 1000));
+              onesignalId = OneSignal.User.PushSubscription.id || "granted";
+            }
 
-            // 取得 OneSignal 裝置 Subscription ID
-            const onesignalId = OneSignal.User.PushSubscription.id || "granted";
-
-            // 通知 Apps Script 主視窗
+            // 回傳給 Google Apps Script 母頁面
             if (window.opener && !window.opener.closed) {
               window.opener.postMessage({
                 type: 'PUSH_SUBSCRIBED',
@@ -68,18 +80,21 @@
               }, '*');
             }
 
+            statusDiv.style.color = "#198754";
             statusDiv.innerText = "✅ 已成功開啟通知！可以關閉此視窗了。";
             setTimeout(() => window.close(), 2000);
-          } else {
-            statusDiv.style.color = "red";
-            statusDiv.innerText = "⚠️ 權限已被拒絕，請點擊網址列鎖頭允許通知。";
-          }
-        } catch (err) {
-          console.error(err);
+          });
+        } else {
+          btn.disabled = false;
           statusDiv.style.color = "red";
-          statusDiv.innerText = "⚠️ 授權過程發生錯誤，請重試。";
+          statusDiv.innerText = "⚠️ 權限已被拒絕，請點擊網址列鎖頭允許通知。";
         }
-      });
+      } catch (err) {
+        console.error(err);
+        btn.disabled = false;
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "⚠️ 發生錯誤，請重試。";
+      }
     }
   </script>
 </body>
